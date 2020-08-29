@@ -26,6 +26,9 @@ from lisa_interaction_msgs.msg import IntentMessage
 # TTS actionlib messages
 from lisa_interaction_msgs.msg import LisaUtterAction, LisaUtterFeedback, LisaUtterResult
 
+from lisa_mqtt.dialogue import DialogueManager
+
+
 MQTT_PORT = 12183 # MQTT Broker Port
 USE_INTENT_SERVICE = True
 ROS_SERVICE_PREFIX = '/lisa/'
@@ -37,6 +40,11 @@ pub_tracked_source = rospy.Publisher(ROS_SERVICE_PREFIX + 'source/sst', String, 
 pub_intent = None
 pub_intent_not_rec = None
 ros_utterance_server = None
+
+# reference for dialogue manager
+# start dialogue manager
+dial_man = DialogueManager()
+
 
 
 def init_intention_topics():
@@ -63,7 +71,13 @@ def on_connect(client, userdata, flags, rc):
     # end action for tts
     client.subscribe("hermes/tts/sayFinished")
     client.subscribe("hermes/error/tts")
-    # for progress
+	
+	# subscribe what is required by the dialogue manager 
+    try:
+        dial_man.on_connect(client, userdata, flags, rc)
+    except Exception as e:
+        print(e)
+	# for progress
     # client.subscribe("hermes/audioServer/default/playBytes/#")
 
 # [DEBUG:2020-07-19 23:00:13,138] rhasspyserver_hermes: Subscribed to hermes/tts/sayFinished
@@ -143,23 +157,32 @@ def on_message(client, userdata, msg):
                 pub_intent.publish(msg)
             except Exception as e:
                 rospy.logwarn("Error publishing intent topic  {}: {}".format(ros_intent_name, e))
-        # client.publish("hermes/tts/say", json.dumps({"text": sentence, "siteId": site_id}))
+        # client.publish("hermes/tts/say", json.dumps({"text": sentence, "siteId": site_id})) 
     elif "hermes/tts/sayFinished" in msg.topic:
         rospy.loginfo("hermes/tts/sayFinished, telling the server")
         ros_utterance_server.say_finished()
     else:
-        pass  # print(msg.topic)
+        # print('Calling dial_man.on_message')
+        dial_man.on_message(client, userdata, msg)
+        # pass  # print(msg.topic)
+	# subscribe what is required by the dialogue manager
+    
 
 
 def mqtt_client(args):
     rospy.loginfo("Starting MQTT Client")
     # Create MQTT client and connect to broker
     client = mqtt.Client()
+    
+	
     client.on_connect = on_connect
     client.on_disconnect = on_disconnect
     client.on_message = on_message
 
     client.connect(args.host, args.port)
+	
+
+	
     # start utter service listening on ROS and using MQTT client to call services
     ros_utterance_server = LisaUtterServer(client)
 
