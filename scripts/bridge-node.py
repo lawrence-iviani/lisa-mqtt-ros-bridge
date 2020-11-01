@@ -37,11 +37,11 @@ topic_broadcast_dict = {}
 def on_connect(client, userdata, flags, rc):
 
 	for m in managers:
-		print('---------- MQTT Manager: ', m)
+		#print('---------- MQTT Manager: ', m)
 		topic_list = m.mqtt_topics_to_subscribe
 		#print('on_connect->topic_list=', topic_list)
 		for k,v in topic_list.items():
-			print('\t subscribing: ', k ,v)
+			#print('\t subscribing: ', k ,v)
 			client.subscribe(k)
 			if '#' in k:
 				topic_broadcast_dict[k] = v
@@ -97,7 +97,7 @@ def setup_managers(client, level_str):
 	# TODO: update the intent service flag from args before setting up ros
 	# args.call_intent_service
 	for m in managers:
-		print('---------- ROS services: ', m)
+		# print('---------- ROS services: ', m)
 		#m.set_client(client)
 		m.init_ros_topics()
 	

@@ -161,7 +161,7 @@ catkin_install_python(PROGRAMS scripts/bridge-node.py
   DESTINATION ${CATKIN_PACKAGE_BIN_DESTINATION}
 )
 
-catkin_install_python(PROGRAMS scripts/test_talker.py scripts/bridge-node.py
+catkin_install_python(PROGRAMS scripts/test.py scripts/bridge-node.py
   DESTINATION ${CATKIN_PACKAGE_BIN_DESTINATION}
 )
 
@@ -212,12 +212,10 @@ catkin_install_python(PROGRAMS scripts/test_talker.py scripts/bridge-node.py
 # endif()
 
 ## Add folders to be run by python nosetests
-catkin_add_nosetests(test)
-
 # http://docs.ros.org/en/kinetic/api/catkin/html/howto/format2/python_nose_configuration.html
 # http://docs.ros.org/en/kinetic/api/catkin/html/howto/format2/rostest_configuration.html
 if (CATKIN_ENABLE_TESTING)
   #find_package(rostest REQUIRED)
-
+  catkin_add_nosetests(test)
   #add_rostest(tests/your_first_rostest.test)
 endif()
