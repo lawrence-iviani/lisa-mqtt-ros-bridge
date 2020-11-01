@@ -5,13 +5,13 @@ from collections import namedtuple
 
 from lisa_mqtt.dialogue import DialogueSession, Machine, MachineError, states, transitions, INIT_STATE, DialogueSessionException
 
-# Which transitions are not possible from a specific state
-#ALL STATES				= 	['wake_up', 'external_request', 'wake_up_interrupt','session_started', 'asr_started', 'text_captured','intent_recognized','intent_not_recognized','rh_session_reset' ]
-FROM_INIT_NON_POSSIBLE =	 	[                               'wake_up_interrupt','session_started', 'asr_started', 'text_captured', 'intent_recognized', 'intent_not_recognized','rh_session_reset' ]
-FROM_WAIT_RH_NON_POSSIBLE  =	['wake_up', 'external_request',                     				   'asr_started', 'text_captured', 'intent_recognized', 'intent_not_recognized' ]
-FROM_SESS_ACT_NON_POSSIBLE =	['wake_up', 'external_request', 					'session_started', 				  'text_captured', 'intent_recognized', 'intent_not_recognized' ]
-FROM_WAIT_SPCH_NON_POSSIBLE	=	['wake_up', 'external_request',                     'session_started', 'asr_started',                  'intent_recognized', 'intent_not_recognized' ]
-FROM_WAIT_INTENT_NON_POSSIBLE = ['wake_up', 'external_request',                     'session_started', 'asr_started', 'text_captured',]
+# Which transitions are NON possible from a specific state. Calling a transition in that state would cause an error
+#ALL STATES				= 	    ['wake_up', 'external_request', 'session_started', 'asr_started', 'text_captured','intent_recognized','intent_not_recognized','rh_session_reset' ]
+FROM_INIT_NON_POSSIBLE =	 	[                               'session_started', 'asr_started', 'text_captured', 'intent_recognized', 'intent_not_recognized','rh_session_reset' ]
+FROM_WAIT_RH_NON_POSSIBLE  =	[          'external_request',     				   'asr_started', 'text_captured', 'intent_recognized', 'intent_not_recognized' ]
+FROM_SESS_ACT_NON_POSSIBLE =	[          'external_request', 	'session_started', 				  'text_captured', 'intent_recognized', 'intent_not_recognized' ]
+FROM_WAIT_SPCH_NON_POSSIBLE	=	[          'external_request',  'session_started', 'asr_started',                  'intent_recognized', 'intent_not_recognized' ]
+FROM_WAIT_INTENT_NON_POSSIBLE = [          'external_request',  'session_started', 'asr_started', 'text_captured',]
 
 # Defined data structures
 # TODO: sessionId is not checked, this messages has to be modified then!!
@@ -53,7 +53,6 @@ class TestStateMachineWakeUp(unittest.TestCase):
 	def tearDownClass(cls):
 		pass
 	
-	
 	def _new_session(self):
 		self.session = DialogueSession()
 		self.dialogue_sm = Machine(model=self.session, states=states, transitions=transitions, initial=INIT_STATE)
@@ -72,15 +71,25 @@ class TestStateMachineWakeUp(unittest.TestCase):
 					raise e
 	
 	def _call_transition_full_check(self, transition, next_state, msg, non_possible_transition):
+		#print(header_str("From state {} - call transition {} - To state {}".format(self.session.state, transition, next_state)))
+		#getattr(self.session, transition)(payload = msg)
+		#print("\tCalling next transition ... ", end='\t')
+		#assert self.session.state == next_state
+		#print("OK")
+		
+		self._call_transition(transition, next_state, msg)
+		print("\tChecking all non possible transitions",)
+		self._call_non_possible_transition(non_possible_transition)
+		print("\tAll transitions checked")
+		
+	def _call_transition(self, transition, next_state, msg):
 		print(header_str("From state {} - call transition {} - To state {}".format(self.session.state, transition, next_state)))
 		getattr(self.session, transition)(payload = msg)
 		print("\tCalling next transition ... ", end='\t')
 		assert self.session.state == next_state
 		print("OK")
-		print("\tChecking all non possible transitions",)
-		self._call_non_possible_transition(non_possible_transition)
-		print("\tAll transitions checked")
 		
+	
 	def test_init_state(self):
 		# Remember to call at the begin of every test
 		print(test_case_str('*** Start test_init_state ***'))
@@ -91,8 +100,13 @@ class TestStateMachineWakeUp(unittest.TestCase):
 		self._call_non_possible_transition(FROM_INIT_NON_POSSIBLE)
 	
 	def test_wake_up_sequence_intent_recognized(self):
-		# Remember to call at the begin of every test
+		"""
+		Test a sequence simulating from a wake up to a non recognized event
+		Try also to call all the other non possible state as test
+		"""
 		print(test_case_str('*** Start test_wake_up_sequence_intent_recognized ***'))
+		
+		# Remember to call at the begin of every test
 		self._new_session()
 		test_sequence = [TestData('wake_up', 'WaitingRhasspySession', WAKE_UP_MSG_1, FROM_WAIT_RH_NON_POSSIBLE),         # Wake up
 						 TestData('session_started', 'SessionActive', SESS_STARTED_MSG_1, FROM_SESS_ACT_NON_POSSIBLE),   # simulate a session started reicived
@@ -105,8 +119,13 @@ class TestStateMachineWakeUp(unittest.TestCase):
 			self._call_transition_full_check(t.transition, t.next_state, t.msg, t.non_possible_states)
 	
 	def test_wake_up_sequence_intent_not_recognized(self):
-		# Remember to call at the begin of every test
+		"""
+		Test a sequence simulating from a wake up to a non recognized event
+		Try also to call all the other non possible state as test
+		"""
 		print(test_case_str('*** Start test_wake_up_sequence_intent_not_recognized ***'))
+		
+		# Remember to call at the begin of every test
 		self._new_session()
 		test_sequence = [TestData('wake_up', 'WaitingRhasspySession', WAKE_UP_MSG_1, FROM_WAIT_RH_NON_POSSIBLE),         # Wake up
 						 TestData('session_started', 'SessionActive', SESS_STARTED_MSG_1, FROM_SESS_ACT_NON_POSSIBLE),   # simulate a session started reicived
@@ -117,6 +136,68 @@ class TestStateMachineWakeUp(unittest.TestCase):
 						]
 		for t in test_sequence:
 			self._call_transition_full_check(t.transition, t.next_state, t.msg, t.non_possible_states)
+
+	def test_wake_up_interrupt(self):
+		"""
+		Try to call a wake from every designed state
+		"""
+		print(test_case_str('*** Start test_wake_up_interrupt ***'))
+	
+		# Remember to call at the begin of every test
+		self._new_session()
+		# Wake up, we want to move to this transition
+		wake_up_intp = TestData('wake_up', 'WaitingRhasspySession', WAKE_UP_MSG_1, FROM_WAIT_RH_NON_POSSIBLE)
+		self._call_transition(wake_up_intp.transition, wake_up_intp.next_state, wake_up_intp.msg)
+
+
+		test_sequence = [TestData('session_started', 'SessionActive', SESS_STARTED_MSG_1, FROM_SESS_ACT_NON_POSSIBLE),   # simulate a session started reicived
+						 TestData('asr_started', 'WaitingSpeech', START_LISTENING_MSG_1, FROM_WAIT_SPCH_NON_POSSIBLE),   # Going in Waiting Speech
+						 TestData('text_captured', 'WaitingIntent', TEXT_CAPTURED_MSG_1, FROM_WAIT_INTENT_NON_POSSIBLE), # Process Intent
+						 TestData('intent_not_recognized', 'SessionActive', INTENT_NOT_RECOGN_MSG_1, FROM_SESS_ACT_NON_POSSIBLE),# simulate intent not recognized
+						 TestData('rh_session_reset', 'WaitingRhasspySession', RH_RESET_SESS_MSG_1, FROM_WAIT_RH_NON_POSSIBLE), # simulate a closing session
+						]
+		
+		# Try to call wake after every state in test_sequence
+		done = []
+		for t in test_sequence:
+			self._call_transition_full_check(t.transition, t.next_state, t.msg, t.non_possible_states)
+			self._call_transition(wake_up_intp.transition, wake_up_intp.next_state, wake_up_intp.msg)
+			# Restore the point
+			done.append(t)
+			for d in done:
+				self._call_transition(d.transition, d.next_state, d.msg)
+		
+		#	self._call_transition_full_check(t.transition, t.next_state, t.msg, t.non_possible_states)
+	
+	def test_close_session(self):
+		"""
+		Try to close the session from every designed state
+		"""
+		print(test_case_str('*** Start test_close_session ***'))
+		# Remember to call at the begin of every test
+		self._new_session()
+		# Wake up, we want to move to this transition
+		self._call_transition('wake_up', 'WaitingRhasspySession', WAKE_UP_MSG_1)
+
+		close_sess_intp = TestData('rh_session_reset', 'WaitingRhasspySession', RH_RESET_SESS_MSG_1, FROM_WAIT_RH_NON_POSSIBLE) # simulate a closing session
+		test_sequence = [TestData('session_started', 'SessionActive', SESS_STARTED_MSG_1, FROM_SESS_ACT_NON_POSSIBLE),   # simulate a session started reicived
+						 TestData('asr_started', 'WaitingSpeech', START_LISTENING_MSG_1, FROM_WAIT_SPCH_NON_POSSIBLE),   # Going in Waiting Speech
+						 TestData('text_captured', 'WaitingIntent', TEXT_CAPTURED_MSG_1, FROM_WAIT_INTENT_NON_POSSIBLE), # Process Intent
+						 TestData('intent_not_recognized', 'SessionActive', INTENT_NOT_RECOGN_MSG_1, FROM_SESS_ACT_NON_POSSIBLE),# simulate intent not recognized				 
+						]
+		
+		# Try to call wake after every state in test_sequence
+		done = []
+		for t in test_sequence:
+			self._call_transition_full_check(t.transition, t.next_state, t.msg, t.non_possible_states)
+			self._call_transition(close_sess_intp.transition, close_sess_intp.next_state, close_sess_intp.msg)
+			# Restore the point
+			done.append(t)
+			for d in done:
+				self._call_transition(d.transition, d.next_state, d.msg)
+		
+		#	self._call_transition_full_check(t.transition, t.next_state, t.msg, t.non_possible_states)
+	
 
 class TestStateMachineExternalWakeUp(unittest.TestCase):
 

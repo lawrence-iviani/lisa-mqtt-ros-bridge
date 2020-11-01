@@ -55,9 +55,9 @@ states=[State(name='Init',),
 
 transitions = [
    # Session 
-    { 'trigger': 'wake_up', 'source': 'Init', 'dest': 'WaitingRhasspySession', 'before': 'init_session'}, # When snowboy start a new interaction
+    # { 'trigger': 'wake_up', 'source': 'Init', 'dest': 'WaitingRhasspySession', 'before': ['close_session','init_session']},#'init_session'}, # When snowboy start a new interaction
 	{ 'trigger': 'external_request', 'source': 'Init', 'dest': 'WaitingRhasspySession'}, # When an external client start a new interaction
-	{ 'trigger': 'wake_up_interrupt', 'source': ['SessionActive', 'WaitingSpeech', 'WaitingIntent', 'WaitingRhasspySession'], 
+	{ 'trigger': 'wake_up', 'source': ['Init', 'SessionActive', 'WaitingSpeech', 'WaitingIntent', 'WaitingRhasspySession'], 
 	             'dest': 'WaitingRhasspySession', 'before': ['close_session','init_session']}, 
 				 # During an action a wake up word is interpreted as an interrupt and a subsequent session close. A new session has to be intiated conseuqeuntly
 
@@ -630,10 +630,7 @@ class DialogueManager(ManagerInterface):
 			#_print_debug('handle_hotword->{} siteId={}'.format(specific_topic, payload['siteId']))
 		elif specific_topic == HOTWORD + '/detected':
 			#_print_topic_data('handle_hotword->', specific_topic, payload, None)
-			if self._session.state == 'Init':
-				self._session.wake_up(specific_topic=specific_topic, payload=payload)
-			else:
-				self._session.wake_up_interrupt(specific_topic=specific_topic, payload=payload)
+			self._session.wake_up(specific_topic=specific_topic, payload=payload)
 		else:
 			rospy.logwarn('handle_hotword->{} +++UNHANDLED+++'.format(specific_topic))
 
