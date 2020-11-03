@@ -157,14 +157,11 @@ include_directories(
 # all install targets should use catkin DESTINATION variables
 # See http://ros.org/doc/api/catkin/html/adv_user_guide/variables.html
 
-catkin_install_python(PROGRAMS scripts/bridge-node.py
+catkin_install_python(PROGRAMS 
+  scripts/bridge-node.py 
+  scripts/run_tests.py
   DESTINATION ${CATKIN_PACKAGE_BIN_DESTINATION}
 )
-
-catkin_install_python(PROGRAMS scripts/test_talker.py scripts/bridge-node.py
-  DESTINATION ${CATKIN_PACKAGE_BIN_DESTINATION}
-)
-
 
 ## Mark executable scripts (Python etc.) for installation
 ## in contrast to setup.py, you can choose the destination
@@ -212,12 +209,14 @@ catkin_install_python(PROGRAMS scripts/test_talker.py scripts/bridge-node.py
 # endif()
 
 ## Add folders to be run by python nosetests
-catkin_add_nosetests(test)
+
 
 # http://docs.ros.org/en/kinetic/api/catkin/html/howto/format2/python_nose_configuration.html
 # http://docs.ros.org/en/kinetic/api/catkin/html/howto/format2/rostest_configuration.html
-if (CATKIN_ENABLE_TESTING)
-  #find_package(rostest REQUIRED)
 
-  #add_rostest(tests/your_first_rostest.test)
+if (CATKIN_ENABLE_TESTING)
+  find_package(rostest REQUIRED)
+  #catkin_add_nosetests(src/lisa_mqtt/tests/ut_sm_test.py)
+  catkin_add_nosetests(src/lisa_mqtt/tests/ut_sm_test.py)
+  add_rostest(src/lisa_mqtt/tests/ros_test.py)
 endif()
