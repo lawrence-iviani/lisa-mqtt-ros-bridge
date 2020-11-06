@@ -473,7 +473,6 @@ class TestLisaStateMachineExternalRequest(TestLisaStateMachineBaseClass):
 		# Wake up, we want to move to this transition
 		ext_intrp = TestData('external_request', 'WaitingRhasspySession', EXTERNAL_MSG_NO_SESSION_2A, FROM_WAIT_RH_NON_POSSIBLE)
 		self._call_transition(ext_intrp.transition, ext_intrp.next_state, ext_intrp.msg)
-		
 		self._call_and_check_transition_sequence_with_interreupt(test_sequence_external_request_interrupt, ext_intrp)
 		
 
