@@ -20,11 +20,6 @@ TOPIC_TTS_FINISHED = '/lisa/tts/finished'
 SERVICE_INTERACT = '/lisa/service/interact'
 SERVICE_UTTER = '/lisa/service/say'
 
-# OLD STUFF
-SCRIPT_NODE_NAME = 'run_roscore.bash'
-SCRIPT_NODE_FOLDER = '/home/pi/sw/lisa_catkin_ws/src/lisa-mqtt-ros-bridge/scripts/'
-LISA_MQTT_NODE = ["lisa-mqtt-ros-bridge", "bridge-node.py"]
-
 # ------------
 # --- TEST ---
 # ------------
@@ -32,10 +27,6 @@ class TestLisaRosInteraction(unittest.TestCase):
 
 	@classmethod
 	def setUp(cls):
-		# def _run_mqtt_node():
-			# cls.mqtt_bridge_p = subprocess.Popen(["rosrun", LISA_MQTT_NODE[0], LISA_MQTT_NODE[1]], stdout=subprocess.PIPE, stderr=subprocess.STDOUT)
-			# sleep(3)
-	
 		if not rosgraph.is_master_online():
 			print("Run ROS core")
 			#cls.kill_core_on_exit = False
@@ -43,37 +34,12 @@ class TestLisaRosInteraction(unittest.TestCase):
 			raise Exception("ROS core not available")
 		rospy.init_node('TestLisaRosInteraction')
 		# TODO: check mqtt broker
-		
-		
-		# print("Starting ROS Core")
-		# script_src = SCRIPT_NODE_FOLDER + SCRIPT_NODE_NAME
-		
-		# # cls.roscore_p = subprocess.Popen([sys.executable, '-c', script_src], stdout=subprocess.PIPE, stderr=subprocess.STDOUT)
-		# cls.roscore_p = subprocess.Popen(["/bin/bash", script_src], stdout=subprocess.PIPE, stderr=subprocess.STDOUT)
-		
-		# _check = 0
-		# while True:
-			# if rosgraph.is_master_online(): # Checks the master uri and results boolean (True or False)
-				# break
-			# else:
-				# _check += 1
-			# if _check > 10:
-				# raise Exception("Cannot connect to ROS Master")
-			# sleep(1.5)
-		# _run_mqtt_node()
 
 	@classmethod
 	def tearDownClass(cls):
 		pass
-		# if cls.kill_core_on_exit:
-			# print("Killing Core")
-			# cls.roscore_p.kill()
-			# subprocess.Popen(["killall" , SCRIPT_NODE_NAME, "roscore", "rosmaster", "rosout"], stdout=subprocess.PIPE, stderr=subprocess.STDOUT)
-		# if cls.mqtt_bridge_p is not None:
-			# cls.mqtt_bridge_p.kill()
-		# subprocess.Popen(["pgrep", "-f", LISA_MQTT_NODE[1], "|", "xargs", "kill"], stdout=subprocess.PIPE, stderr=subprocess.STDOUT)
 
-	def Xtest_check_topics_available(self):
+	def test_check_topics_available(self):
 		def _on_intent_received():
 			pass	
 		intent = rospy.Subscriber(TOPIC_INTENT_RECOGNIZED, IntentMessage, _on_intent_received)		
@@ -82,7 +48,7 @@ class TestLisaRosInteraction(unittest.TestCase):
 		intent.unregister()
 		intent_not_recognized.unregister()
 
-	def Xtest_check_services_available(self):
+	def test_check_services_available(self):
 		rospy.wait_for_service(SERVICE_INTERACT, timeout=3)
 		rospy.wait_for_service(SERVICE_UTTER, timeout=3)
 		utter = rospy.ServiceProxy(SERVICE_UTTER, UtterService)
@@ -99,11 +65,15 @@ class TestLisaRosInteraction(unittest.TestCase):
 		wait_time = 5
 		wait_topics = {TOPIC_INTENT_RECOGNIZED: IntentMessage, TOPIC_NOT_RECOGNIZED: IntentNotRecognizedMessage}
 		wait_answer = True
-
 		answered, not_answered, not_executed = self._run_single_call(
-								SERVICE_INTERACT, InteractService, context_1, canBeEnqued_1, canBeDiscarded_1,
-								text_to_utter=text_1, wait_topics=wait_topics, wait_time=wait_time, wait_answer=wait_answer)
-		
+									SERVICE_INTERACT, InteractService, context_1, canBeEnqued_1, canBeDiscarded_1,
+									text_to_utter=text_1, wait_topics=wait_topics, wait_time=wait_time, wait_answer=wait_answer)
+
+		print(test_case_str("test_call_interact_service_single results:"))
+		print("-----\nAnswered {}\n{}".format(len(answered), answered))
+		print("-----\nNot Answered {}\n{}".format(len(not_answered), not_answered))
+		print("-----\nNot Executed {}\n{}".format(len(not_executed), not_executed))
+		return answered, not_answered, not_executed
 		
 	def test_call_utter_service_single(self):	
 		print(test_case_str('*** Start test_call_utter_service_single ***'))
@@ -120,6 +90,11 @@ class TestLisaRosInteraction(unittest.TestCase):
 		answered, not_answered, not_executed = self._run_single_call(
 								SERVICE_UTTER, UtterService, context_1, canBeEnqued_1, canBeDiscarded_1,
 								text_to_utter=text_1, wait_topics=wait_topics, wait_time=wait_time, wait_answer=wait_answer)
+		print(test_case_str("test_call_utter_service_single results:"))
+		print("-----\nAnswered {}\n{}".format(len(answered), answered))
+		print("-----\nNot Answered {}\n{}".format(len(not_answered), not_answered))
+		print("-----\nNot Executed {}\n{}".format(len(not_executed), not_executed))
+		return answered, not_answered, not_executed
 	
 	def _run_single_call(self, service, service_type, context_id, canBeEnqued, canBeDiscarded,
 						 text_to_utter='', wait_topics={}, wait_time=0.25, wait_answer=False):
@@ -180,6 +155,7 @@ class TestLisaRosInteraction(unittest.TestCase):
 					print('Response: ' + str(response))
 					if not response:
 						not_executed.append(Result(n_test, _context, e, d))
+						continue
 					if wait_answer:
 						thrd = []
 						for t in zip(wait_topics.keys(), wait_topics.values()):
@@ -202,11 +178,17 @@ class TestLisaRosInteraction(unittest.TestCase):
 						#print("topic_called is {} value is {}".format(id(topic_called), topic_called[0]))
 						if topic_called[0]:
 							answered.append(Result(n_test, _context, e, d))
-							if context_called[0] is not None:
-								# if context_called[0]==
-								print('[{}] context: original={} vs {}=called '.format(n_test, _context, context_called[0]))
-							else:
-								print('[{}] !!! context_called should be not None, original {}'.format(n_test, _context))
+							assert context_called[0] is not None, "Results available but context is not for test_id[{}], "\
+																  "context={} canBeEnqued={} canBeDiscarded={}".format(n_test,
+																   _context, e, d)
+							assert context_called[0] == _context, 'For test_id[{}] context fail: original={} vs {}=called with '\
+																  'canBeEnqued={} canBeDiscarded={}'.format(n_test,
+																   _context, context_called[0],  e, d)
+							# if context_called[0] is not None:
+								# # if context_called[0]==
+							print('[{}] context: original={} SAME of {}=called '.format(n_test, _context, context_called[0]))
+							# else:
+								# print('[{}] !!! context_called should be not None, original {}'.format(n_test, _context))
 						else:
 							not_answered.append(Result(n_test, _context, e, d))
 						# assert topic_called, "Topic answer not received for case {}_{}_{}".format(_context, e, d)
@@ -218,10 +200,6 @@ class TestLisaRosInteraction(unittest.TestCase):
 						answered.append(Result(n_test, _context, e, d))
 						sleep(wait_time)
 					print("-----------\n")
-		print("results:")
-		print("-----\nAnswered {}\n{}".format(len(answered), answered))
-		print("-----\nNot Answered {}\n{}".format(len(not_answered), not_answered))
-		print("-----\nNot Executed {}\n{}".format(len(not_executed), not_executed))
 		return answered, not_answered, not_executed
 	
 if __name__ == '__main__':

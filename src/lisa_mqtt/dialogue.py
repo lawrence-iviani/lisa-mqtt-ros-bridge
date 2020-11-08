@@ -45,21 +45,21 @@ subscribe_topics = {'hermes/dialogueManager/': ['sessionStarted', 'sessionEnded'
 					'hermes/tts/':             ['say', 'sayFinished']}
 
 
+# Defne states
+states=[State(name='Init',), # No selection of any 
+		State(name='WaitingRhasspySession',), # An external dialogue session is selected, a sessopm from rhasspy is not yet assigned
+		State(name='SessionActive',), # an active rhasspy session,
+		State(name='WaitingIntent',), # wait for an intent
+		State(name='WaitingSpeech',), # wait for an input speech
+		State(name='WaitingSay',),] # A utter in act, wait for termination
+
+
 # Defne transitions
-states=[State(name='Init',),
-		State(name='WaitingRhasspySession',),
-		State(name='SessionActive',),
-		State(name='WaitingIntent',),
-		State(name='WaitingSpeech',),
-		State(name='WaitingSay',),]
-
-
 transitions = [
-    # Session start
 	 # An external client start a new interaction
-	 # TODO: remove WaitingSpeech or add WaitingSay
 	{ 'trigger': 'external_request', 'source': ['Init', 'SessionActive', 'WaitingSpeech', 'WaitingSay', 'WaitingIntent', 'WaitingRhasspySession'],
       'dest': 'WaitingRhasspySession', 'before': ['close_session','init_external_session']},
+
 	# During an action a wake up word is interpreted as an interrupt and a subsequent session close. A new session has to be intiated conseuqeuntly
 	{ 'trigger': 'wake_up', 'source': ['Init', 'SessionActive', 'WaitingSpeech', 'WaitingSay','WaitingIntent', 'WaitingRhasspySession'], 
 	  'dest': 'WaitingRhasspySession', 'before': ['check_hotword','close_session','init_hot_word_session']},  
@@ -73,8 +73,9 @@ transitions = [
 	{ 'trigger': 'tts_say', 'source': 'WaitingRhasspySession', 'dest': 'WaitingSay', 
 	  'before': ['init_notification_session','check_session_data']}, 
 	{ 'trigger': 'tts_say', 'source': 'SessionActive', 'dest': 'WaitingSay', 'before': 'check_session_data'}, 
-	{ 'trigger': 'tts_finished', 'source': 'WaitingSay', 'dest': 'SessionActive', 'before': 'check_session_data'}, 
-	
+	{ 'trigger': 'tts_finished', 'source': 'WaitingSay', 'dest': 'SessionActive','unless': ['is_notification_only'] , 'before': ['check_for_previous_session','check_session_data']}, 
+	{ 'trigger': 'tts_finished', 'source': 'WaitingSay', 'dest': 'WaitingRhasspySession', 'conditions': ['is_notification_only'], 
+	  'before': ['check_session_data', 'rhasspy_notification_only_session_terminated']}, 
 	# when listening and capturing a speech
 	{ 'trigger': 'asr_started', 'source': 'SessionActive', 'dest': 'WaitingSpeech', 'before': 'check_session_data'}, 
 	{ 'trigger': 'text_captured', 'source': 'WaitingSpeech', 'dest': 'WaitingIntent', 'before': 'check_session_data'}, 
@@ -90,10 +91,10 @@ transitions = [
 	  'dest': 'WaitingRhasspySession', 'before': ['check_session_data', 'rhasspy_session_terminated']}, # the exteranl session has been terminated
 ]
 
+
 # ------------
 # --- CODE ---
 # ------------ 
-
 class DialogueException(Exception):
 	pass
 
@@ -110,6 +111,7 @@ class SessionInfo:
 	active_rhasspy_session = None  # The RH dialogue session
 	site_rhasspy_id = ''  # The RH site where the dialogue is performed
 	active_rhasspy_session_time_start = None
+	notification_only = False  # a flag for notification only session(utter only).  It is set and managed from the caller
 	
 	def terminate_session(self):
 		self.session_ID = None
@@ -128,14 +130,16 @@ class SessionInfo:
 	def reset_rhasspy_session(self):
 		self.active_rhasspy_session = None
 		self.active_rhasspy_session_time_start  = None
+		self.notification_only = False
 		
-	def init_session(self, session_ID, rh_site):
+	def init_session(self, session_ID, rh_site, notification_only=False):
 		"""
 		Init a dialogue session with session_ID for the rhasspy site rh_site
 		"""
 		self.session_ID = session_ID
 		self.site_rhasspy_id = rh_site
 		self.session_time_start = current_milli_time()
+		self.notification_only = notification_only
 	
 	def update_rhasspy_session(self, rh_session, rh_site):
 		assert self.session_ID is not None, "update_rhasspy_session: session_ID cannot be None"
@@ -150,6 +154,9 @@ class SessionInfo:
 	def rhasspy_elasped_time(self):
 		return current_milli_time()-self.active_rhasspy_session_time_start if self.active_rhasspy_session_time_start is not None else 0.0 #if self.has_active_rhasspy_session() else None
 			
+	@property
+	def is_notification_only(self):
+		return self.notification_only
 	
 class DialogueSession:
 	# TODO, add a session storage here??
@@ -163,25 +170,25 @@ class DialogueSession:
 	# ----------------------------
 	def reset_rhasspy_session(self, **kwargs):
 		payload = kwargs['payload']
-		rospy.logdebug("\tCalling reset_rhasspy_session_and_site: {}".format(payload))
+		rospy.logdebug("Calling reset_rhasspy_session_and_site: {}".format(payload))
 		self._session_data.reset_rhasspy_session_and_site()
 	
 	def close_session(self, **kwargs):
 		# TODO, i should save the action list of this session
 		payload = kwargs['payload']
-		rospy.logdebug("\tCalling terminate_session: {}".format(payload))
+		rospy.logdebug("Calling terminate_session: {}".format(payload))
 		self._session_data.terminate_session()
 		
 	def rhasspy_session_started(self, **kwargs):
 		payload = kwargs['payload']
-		rospy.logdebug("\tCalling start_session payload: {}".format(payload)) 
+		rospy.logdebug("Calling start_session payload: {}".format(payload)) 
 				
 		# update the data
 		self._session_data.update_rhasspy_session(payload['sessionId'],  payload['siteId'])
 	
 	def rhasspy_session_terminated(self, **kwargs):
 		payload = kwargs['payload']
-		rospy.logdebug("\tCalling rhasspy_session_terminated_during_wait, payload: {}".format(payload))
+		rospy.logdebug("Calling rhasspy_session_terminated_during_wait, payload: {}".format(payload))
 		
 		termination_reason =  payload['termination']['reason']
 		rospy.logdebug("Calling session_data.rhasspy_session_terminated due to termination reason: ->{}<-".format(termination_reason))
@@ -192,7 +199,7 @@ class DialogueSession:
 	
 	def rhasspy_session_terminated_during_wait(self, **kwargs):
 		payload = kwargs['payload']
-		rospy.logdebug("\tCalling rhasspy_session_terminated_during_wait, payload: {}".format(payload))
+		rospy.logdebug("Calling rhasspy_session_terminated_during_wait, payload: {}".format(payload))
 		termination_reason =  payload['termination']['reason']
 		
 		# Based on termination reason i should change accordingly the behaviour
@@ -207,24 +214,24 @@ class DialogueSession:
 		
 	def init_hot_word_session(self, **kwargs):
 		payload = kwargs['payload']
-		rospy.logdebug("\tCalling init_hot_word_session, payload: {}".format(payload))
+		rospy.logdebug("Calling init_hot_word_session, payload: {}".format(payload))
 		
-		# if wakeupword, e.g. 'specific_topic': 'snowboy/detected', 
-		#self.anonymous_id += 1
-		session_ID = WAKEUPWORD_PREFIX + HOTWORD #+'_' + str(self.anonymous_id)
+		# 'specific_topic': 'snowboy/detected', 
+		session_ID = WAKEUPWORD_PREFIX + HOTWORD 
 		rh_site = payload['siteId']
 		self._session_data.init_session(session_ID, rh_site)
 
 	def init_external_session(self, **kwargs):
 		payload = kwargs['payload']
-		rospy.logdebug("\tCalling init_external_session, payload: {}".format(payload))
+		rospy.logdebug("Calling init_external_session, payload: {}".format(payload))
 		rh_site = payload['siteId']
 		session_ID = payload['externalSessionID']
+		notifiaction_only = True if payload['type'] == 'notification' else False
 		if session_ID is None:
 			self.anonymous_id += 1
 			session_ID = ANONYMOUS_PREFIX + str(self.anonymous_id)
-		rospy.logdebug('init_external_session.session_ID is: ' + str(session_ID))
-		self._session_data.init_session(session_ID, rh_site)
+		rospy.logdebug('init_external_session.session_ID is: {}, is notification only: {}'.format(session_ID, notifiaction_only))
+		self._session_data.init_session(session_ID, rh_site, notifiaction_only)		
 	
 	def check_hotword(self, **kwargs):
 		payload = kwargs['payload']
@@ -233,12 +240,12 @@ class DialogueSession:
 	
 	def check_rhasspy_site_data(self, **kwargs):
 		payload = kwargs['payload']
-		rospy.logdebug("\tCalling check_rhasspy_site_data, payload: {}".format(payload))
+		rospy.logdebug("Calling check_rhasspy_site_data, payload: {}".format(payload))
 		self._check_valid_rh_session(rh_site_id=payload['siteId'])
 	
 	def check_session_data(self, **kwargs):
 		payload = kwargs['payload']
-		rospy.logdebug("\tCalling check_session_data, payload: {}".format(payload))
+		rospy.logdebug("Calling check_session_data, payload: {}".format(payload))
 		
 		# TODO: move in the function _check_valid_rh_session (and rename it!).
 		#  the session ID should be compared with the one extracted from session_data
@@ -252,6 +259,7 @@ class DialogueSession:
 		# this is a brutal fix_rh_session
 		rh_session_id = kwargs['payload']['sessionId']
 		rh_site_id = kwargs['payload']['siteId']
+		rospy.logdebug("Calling init_notification_session, payload: {}".format(kwargs['payload']))
 		
 		if self._session_data.active_rhasspy_session is not None:
 			raise DialogueSessionException(
@@ -267,7 +275,27 @@ class DialogueSession:
 						rh_site_id, self._session_data.site_rhasspy_id ))
 		# after all the check update the rhasshpu session
 		self._session_data.update_rhasspy_session(rh_session_id, rh_site_id)
+	
+	def check_for_previous_session(self,  **kwargs):
+		payload = kwargs['payload']
+		rospy.logdebug("Calling check_for_previous_session, payload: {}".format(payload))
+
+	def is_notification_only(self, **kwargs):
+		payload = kwargs['payload']
+		rospy.logdebug("Calling is_notification_only , payload: {}".format(payload))
+		rh_session_id = kwargs['payload']['sessionId']
+		rh_site_id = kwargs['payload']['siteId']
 		
+		if self.is_valid_rh_session(rh_session_id, rh_site_id):
+			return self._session_data.is_notification_only
+		else:
+			return # by purpose i wanna return none. In this case in not specified
+	
+	def rhasspy_notification_only_session_terminated(self, **kwargs):
+		payload = kwargs['payload']
+		rospy.logdebug("Calling rhasspy_notification_only_session_terminated , payload: {}".format(payload))
+		self._session_data.reset_rhasspy_session()		
+	
 	# ---------------------
 	# ----- Utilities -----
 	# ---------------------
@@ -279,13 +307,13 @@ class DialogueSession:
 		if self.is_valid_rh_session(rh_session_id, rh_site_id):
 			return self._session_data.session_ID
 		else:
-		# TODO: what about return None? What is the impact?
+			# TODO: what about return None? What is the impact?
 			raise DialogueException('Cannot return session ID: request rh pair({}-{}) mismatch persited pair ({}-{})'.format(
 									rh_session_id, rh_site_id, self._session_data.active_rhasspy_session, self._session_data.site_rhasspy_id))
 	
 	def has_active_rhasspy_session(self):
 		return not self._session_data.active_rhasspy_session == None
-	
+		
 	# ------------------------------------
 	# ----- Internal Check Utilities -----
 	# ------------------------------------
@@ -327,65 +355,62 @@ class DialogueSession:
 	# ----- Init STATE -----
 	# ----------------------
 	def on_enter_Init(self, **kwargs):
-		rospy.loginfo("\t+-+-+-+-+-+-+-ENTER Init: from kwargs={}".format(kwargs))
+		rospy.loginfo(_format_state_log("_format_state_logInit: from kwargs={}".format(kwargs), enter=True))
 		if not (self._session_data.session_ID is None and self._session_data.active_rhasspy_session is None):
 			raise DialogueSessionException("On enter STATE Init, Session check failed: session_ID[{}] and active_rhasspy_session should be None: [{}]".format(
 											self._session_data.session_ID, self._session_data.active_rhasspy_session))
-		# todo I should reset the session?
-	#	rospy.loginfo("DialogueSession: reset rhasspy session {} after {} ms".format(self._active_rhasspy_session, self.elasped_time))
-	
-	def on_exit_Init(self, **kwargs):
-		rospy.loginfo("\t\t*/*/*/*/*/*/*/EXIT Init: kwargs={}".format(kwargs))
-		
 
+	def on_exit_Init(self, **kwargs):
+		rospy.loginfo(_format_state_log("Init: kwargs={}".format(kwargs), enter=False))
+		
 	# ---------------------------------------
 	# ----- WaitingRhasspySession STATE -----
 	# ---------------------------------------
 	def on_enter_WaitingRhasspySession(self, **kwargs):
-		rospy.loginfo("ENTER\t+-+-+-+-+-+-+- WaitingRhasspySession: kwargs={}".format(kwargs))
+		rospy.loginfo(_format_state_log("WaitingRhasspySession: kwargs={}".format(kwargs), enter=True))		
 		if not (self._session_data.session_ID is not None and self._session_data.site_rhasspy_id!='' and self._session_data.active_rhasspy_session is None):
 			raise DialogueSessionException("On enter STATE WaitingRhasspySession, Session not properly resetted: session_ID[{}] "
 										   "and active_rhasspy_session[{}] should be NOT None or NOT empty - active_rhasspy_session should be None [{}]".format(
 											self._session_data.session_ID, self._session_data.site_rhasspy_id, self._session_data.active_rhasspy_session))
 		
 	def on_exit_WaitingRhasspySession(self, **kwargs):
-		rospy.loginfo("EXIT\t*/*/*/*/*/*/*/EXIT DialogueSession.on_exit_WaitingRhasspySession: kwargs={}".format(kwargs))
+		rospy.loginfo(_format_state_log("WaitingRhasspySession: kwargs={}".format(kwargs), enter=False))
 
 	# -------------------------------
 	# ----- SessionActive STATE -----
 	# -------------------------------
 	def on_enter_SessionActive(self, **kwargs):
-		rospy.loginfo("ENTER\t+-+-+-+-+-+-+- SessionActive: kwargs={}".format(kwargs))						
+		rospy.loginfo(_format_state_log("SessionActive: kwargs={}".format(kwargs), enter=True))				
 	
 	def on_exit_SessionActive(self, **kwargs):
-		rospy.loginfo("EXIT\t*/*/*/*/*/*/*/ SessionActive: kwargs={}".format(kwargs))
+		rospy.loginfo(_format_state_log("SessionActive: kwargs={}".format(kwargs), enter=False))
 
 	# -------------------------------
 	# ----- WaitingIntent STATE -----
 	# -------------------------------
 	def on_enter_WaitingIntent(self, **kwargs):
-		rospy.loginfo("ENTER\t*/*/*/*/*/*/*/ WaitingIntent: kwargs={}".format(kwargs))
+		rospy.loginfo(_format_state_log("WaitingIntent: kwargs={}".format(kwargs), enter=True))
 	
 	def on_exit_WaitingIntent(self, **kwargs):
-		rospy.loginfo("EXIT\t*/*/*/*/*/*/*/ WaitingIntent: kwargs={}".format(kwargs))
+		rospy.loginfo(_format_state_log("WaitingIntent: kwargs={}".format(kwargs), enter=False))
 		
 	# -------------------------------
 	# ----- WaitingSpeech STATE -----
 	# -------------------------------
 	def on_enter_WaitingSpeech(self, **kwargs):
-		rospy.loginfo("ENTER\t*/*/*/*/*/*/*/ WaitingSpeech: kwargs={}".format(kwargs))
+		rospy.loginfo(_format_state_log("WaitingSpeech: kwargs={}".format(kwargs), enter=True))
 	
 	def on_exit_WaitingSpeech(self, **kwargs):
-		rospy.loginfo("EXIT\t*/*/*/*/*/*/*/EXIT WaitingSpeech: kwargs={}".format(kwargs))
+		rospy.loginfo(_format_state_log("WaitingSpeech: kwargs={}".format(kwargs), enter=False))
 
 	# ----------------------------
 	# ----- WaitingSay STATE -----
 	# ----------------------------
 	def on_enter_WaitingSay(self, **kwargs):
-		rospy.loginfo("ENTER\t*/*/*/*/*/*/*/ENTER WaitingSay: kwargs={}".format(kwargs))
+		rospy.loginfo(_format_state_log("WaitingSay: kwargs={}".format(kwargs), enter=True))
 	
 	def on_exit_WaitingSay(self, **kwargs):
-		rospy.loginfo("EXIT\t*/*/*/*/*/*/*/EXIT WaitingSay: kwargs={}".format(kwargs))
+		rospy.loginfo(_format_state_log("WaitingSay: kwargs={}".format(kwargs), enter=False))
 
 
 class DialogueManager(ManagerInterface):
@@ -408,31 +433,27 @@ class DialogueManager(ManagerInterface):
 	@property
 	def mqtt_topics_to_subscribe(self):
 		retval = OrderedDict()
-		# print('subscribe_topics.items()=',subscribe_topics.items())
 		for k,v  in subscribe_topics.items():
-			#print(k,v)
 			if 'dialogueManager' in k:
 				function_handler = self.handle_dialogue
 			elif 'hotword' in k:
-				function_handler = self.handle_hotword #(specific_topic, message)
+				function_handler = self.handle_hotword 
 			elif 'asr' in k:
-				function_handler = self.handle_asr#(specific_topic, message)
+				function_handler = self.handle_asr
 			elif 'nlu' in k:
-				function_handler = self.handle_nlu#(specific_topic, message)
+				function_handler = self.handle_nlu
 			elif 'error' in k:
-				function_handler = self.handle_error#(specific_topic, message)
+				function_handler = self.handle_error
 			elif 'tts' in k:
-				function_handler = self.handle_tts#(specific_topic, message)
+				function_handler = self.handle_tts
 			elif 'intent' in k:
-				function_handler = self.handle_intents#(specific_topic, message)
+				function_handler = self.handle_intents
 			else:
 				continue
-			#print('v=',v)
 			for t in v:
 				general_topic = k
 				specific_topic = t
 				retval[k+t] = Topic(general_topic=k, specific_topic=t, function_handler=function_handler)
-		#print('retval',retval)
 		return retval
 
 	# ---------------------------------
@@ -463,20 +484,16 @@ class DialogueManager(ManagerInterface):
 	def _perform_ros_interaction_srv(self, request, utter_only=False):
 		# unique method to manage a request for a ros service
 		context_id = request.context_id	
+		if context_id is None or len(context_id)==0:
+			context_id=None
 		if utter_only:
 			interaction_type='notification'
 		else:
 			interaction_type='action'
-		
-		try:
-			if context_id is not None and len(context_id):
-				rospy.logdebug("Recieved ROS request for interaction {} with context_id {}".format(interaction_type, context_id))
-				response = self.direct_interaction(type=interaction_type, text=request.text, canBeEnqueued=request.canbeenqued,
-												 canBeDiscarded=request.canbediscarded ,customData=context_id)
-			else:
-				rospy.logdebug("Recieved ROS request for interaction {} with anonymous context".format(interaction_type))
-				response = self.direct_interaction(type=interaction_type, text=request.text, canBeEnqueued=request.canbeenqued,
-												 canBeDiscarded=request.canbediscarded )
+		try:		
+			rospy.logdebug("Recieved ROS request for interaction type {}, with context_id {}".format(interaction_type, context_id))
+			response = self.direct_interaction(type=interaction_type, text=request.text, canBeEnqueued=request.canbeenqued,
+											   canBeDiscarded=request.canbediscarded ,customData=context_id)
 		except Exception as e:
 			rospy.logdebug('Catched excpetion exceuting interaction: {}'.format(e))
 			response = False
@@ -485,10 +502,8 @@ class DialogueManager(ManagerInterface):
 
 	def execute_utter_actionlib_callback(self, goal_handle):
 		sentence = goal_handle.sentence
-
 		feedback_msg = LisaUtterFeedback()
 		feedback_msg.percent_complete = 0.0
-
 		result_msg = LisaUtterResult()
 
 		# utter sentence
@@ -499,10 +514,6 @@ class DialogueManager(ManagerInterface):
 		# See the Dialogue API Reference for further explanations.
 		# payload = TtsSay(text=sentence, lang="en_EN") # id=sentence for example?
 
-		# instead of using TtsSay (complex for import and it is a json message), using some json magic
-		#payload = json.dumps({"text": sentence})  # TtsSay(text=sentence, lang="en_EN")  # id=sentence for example?
-		#rospy.loginfo("Received sentence to utter: {}".format(payload))
-
 		rospy.loginfo("Received sentence to utter: {}".format(sentence))
 		self.direct_interaction(type='notification', text=sentence, canBeEnqueued=False, canBeDiscarded=False)
 
@@ -512,9 +523,10 @@ class DialogueManager(ManagerInterface):
 			feedback_msg.percent_complete = float(i) / float(len(sentence))
 			# self.get_logger().info('Feedback: {0}'.format(feedback_msg.partial_sequence))
 			self.action_utter.publish_feedback(feedback_msg)
-			rospy.sleep(SLEEP_TIME)  # THE operation
+			rospy.sleep(SLEEP_TIME)  # THE operation, todo there should be 
 
 		# TODO: this is bad, it needs a sync with the TTS system
+		# TODO: now tts message it is implemented
 		self.action_utter.set_succeeded(result_msg)
 
 	def publish_not_recognized_intent(self, payload):
@@ -525,7 +537,8 @@ class DialogueManager(ManagerInterface):
 		context_id = ''  
 		# todo check if is fine
 		assert self._session.is_valid_rh_session(rh_session_id, rh_site_id), "Mismatched rh session"
-		context_id = self._session.check_and_return_session_ID(rh_session_id, rh_site_id) # to check if is fine
+		# todo check if is fine
+		context_id = self._session.check_and_return_session_ID(rh_session_id, rh_site_id) 
 
 		# send ros massage
 		msg = IntentNotRecognizedMessage(context_id=context_id, original_input=input_str)
@@ -534,7 +547,7 @@ class DialogueManager(ManagerInterface):
 
 	# --------------------------------------------------
 	# -------------- HIGH LEVEL FUNCTIONS --------------
-	# --------------------------------------------------
+	# --------------------------------------------------	
 	def direct_interaction(self, type='action', text='something to infer', canBeEnqueued=True, canBeDiscarded=True, customData=None):
 		# siteId Optional String - Site where to start the session
 		# init Object - Session initialization description: Action or Notification. See below
@@ -548,56 +561,62 @@ class DialogueManager(ManagerInterface):
 		# intent_filter: typing.Optional[typing.List[str]] = None  A list of intents names to restrict the NLU resolution on the first query.
 		# send_intent_not_recognized: bool = False
 		# Indicates whether the dialogue manager should handle non-recognized intents by itself or send them for the client to handle.
-		
-		# entering, customData can be None or a given string
+	
 		assert customData is None or isinstance(customData,str), 'Custom data not supported: ' + str(customData)		
-		call_session_interrupt = True
+		
+		def _send_start_session(_cData, _cbEnq, _text):
+			# packaging the start session
+			init_pl = {"type": type, "text": _text, "canBeEnqueued": _cbEnq}
+			payload = json.dumps({"init": init_pl, 'customData': 	_cData})
+			rospy.logdebug("publish startSession with payload {}".format(payload))
+			self._mqtt_client.publish(topic="hermes/dialogueManager/startSession", payload=payload)
+			rospy.sleep(0.1)
+		
+		def _custom_data(_cData):
+			# Update customData, it is used as an arbitrary session_ID and if it is None should be generated
+			if _cData is None:
+				_cData = self._session.session_ID
+				rospy.logdebug("Assigning arbitary session ID {}".format(_cData))
+			assert _cData is not None, "At this point a session ID must be generated or provided, cannot be None"
+			return _cData
+			
 		if self._session.has_active_rhasspy_session():
 			rh_session_id = self._session.rhasspy_session_id
+			rospy.logdebug("Previous session running {}".format(rh_session_id))
 			if canBeDiscarded:
-				rospy.loginfo("Previous session running {}, Hermes startSession can be discarded".format(rh_session_id))
+				rospy.logdebug("Previous session running {}, startSession can be discarded".format(rh_session_id))
 				return False
-			else:
-				if not canBeEnqueued:
-					# You should send this after receiving received an Intent when you want to end the session.
-					# Be sure to use the same sessionId as the one in the Intent message
-					# The actual session has to be preempted
-					# sessionId:	String - Identifier of the session to end.
-					# text :	 	Optional String - The text the TTS should say to end the session.
-					payload = json.dumps({"sessionId": rh_session_id})
-					rospy.loginfo("Previous session running [{}], removing and publish Hermes topic startSession".format(rh_session_id))
-					self._mqtt_client.publish(topic="hermes/dialogueManager/endSession", payload=payload)
-					rospy.sleep(0.05) # Let's wait before proceed, all the transitions I guess are async
-					call_session_interrupt = True
-				else:
-					call_session_interrupt = False
-					rospy.loginfo("Previous session running [{}], enqueuing Hermes session ".format(rh_session_id))
+			if canBeEnqueued:
+				if type=='notification':
+					rospy.logwarn("A notification only cannot be enqued, discarding request [{}], (previous session is [{}])".format(customData, rh_session_id))
+					return False
+				rospy.logdebug("Previous session running [{}], enqueuing {} session (customData={})".format(rh_session_id, type,customData))
+				customData = _custom_data(customData)
+				_send_start_session(customData, canBeEnqueued, text)
+				return True
+			payload = json.dumps({"sessionId": rh_session_id})
+			rospy.logdebug("Previous session running [{}], ending before a new startSession".format(rh_session_id))
+			self._mqtt_client.publish(topic="hermes/dialogueManager/endSession", payload=payload)
+			rospy.sleep(0.1) # Let's wait before proceed, all the transitions I guess are async
+		else:
+			rospy.logdebug("There are no other active rhasspy session")
 		
-		# Here the state machine must be awared of the external request!
-		# TODO also if  is enqueued should i rise the interrupt??? MUST BE TESTED!!
-		if call_session_interrupt:
-			self._session.external_request(payload={'externalSessionID': customData, 'siteId': DEFAULT_RH_SITE})
+		customData = _custom_data(customData)
+		# start a new session in the SM
+		pl_ext_req = {'externalSessionID': customData, 'siteId': DEFAULT_RH_SITE, 'type': type}
+		rospy.logdebug("publish startSession with payload {}".format(pl_ext_req))
 		
-		# Update customData, it is used as an arbitrary session_ID and if it is None should be generated
-		if customData is None:
-			customData = self._session.session_ID
-		assert customData is not None, "At this point a session ID must be generated or provided, cannot be None"
-		
-		# packaging the start session
-		init_pl = {"type": type, "text": text, "canBeEnqueued": canBeEnqueued}
-		payload = json.dumps({"init": init_pl, 'customData': 	customData})
-		# customData: this should be used when a client initate the session
-		rospy.logdebug("publish Hermes startSession with payload {}".format(payload))
-		self._mqtt_client.publish(topic="hermes/dialogueManager/startSession", payload=payload)
-		rospy.sleep(0.05)
-		
+		# SM update
+		self._session.external_request(payload=pl_ext_req)
+		# sending the start on the 
+		_send_start_session(customData, canBeEnqueued, text)
+		rospy.sleep(0.1) # wait the message is delivered and executed. Emipirival value
 		return True
-
+			
 	# -------------------------------------------
 	# -------------- MQTT HANDLERS --------------
 	# -------------------------------------------
 	def handle_intents(self, specific_topic, client, userdata, message):
-		# TODO: add the session context in the reply
 
 		# decode the message
 		payload = json.loads(message.payload)
@@ -613,9 +632,7 @@ class DialogueManager(ManagerInterface):
 		
 		# mapping to ROS
 		# prepare for return message, this is how we map the MQTT intent in a ros message
-		# string intent_name
-		# string[] pay_load
-		# float32 confidence
+		# string intent_name, string[] pay_load, float32 confidence
 		# TODO: add field -> string stt_input
 		ros_intent_name = intent_str['intentName'] if 'intentName' in intent_str else topic[len("hermes/intent/"):]
 		ros_pay_load = slots
@@ -634,7 +651,6 @@ class DialogueManager(ManagerInterface):
 
 	def handle_dialogue(self, specific_topic, client, userdata, message):
 		payload = json.loads(message.payload)
-		parameters = ['sessionId', 'siteId', 'customData']
 		rospy.logdebug("+-+-+-+-+-+-handle_dialogue {} with payload={}".format(specific_topic, payload))
 		if specific_topic == 'sessionStarted':
 			try:				
@@ -645,7 +661,7 @@ class DialogueManager(ManagerInterface):
 				rospy.logerr('+-+-+-+-+-+-EXCEPTION: '+str(specific_topic)+':  %s', str(e))
 				raise e
 		elif specific_topic == 'sessionQueued':
-			rospy.logdebug('handle_dialogue.sessionQueued: topic={}, payload={}, params={}'.format(specific_topic, payload, parameters))
+			rospy.logdebug('handle_dialogue.sessionQueued: topic={}, payload={}'.format(specific_topic, payload))
 		elif specific_topic == 'sessionEnded':
 			try:
 				rospy.logdebug("+-+-+-+-+-+-Calling rh_session_reset termination={}: payload={}".format( payload['termination'], payload))
@@ -678,12 +694,12 @@ class DialogueManager(ManagerInterface):
 	def handle_asr(self, specific_topic, client, userdata, message):
 		payload = json.loads(message.payload)
 		if specific_topic == 'startListening':
-			rospy.logdebug('==========handle_asr-startListening: '+str(specific_topic) +': payload %s', str(payload))
+			rospy.logdebug('handle_asr-startListening: '+str(specific_topic) +': payload %s', str(payload))
 			self._session.asr_started(specific_topic=specific_topic, payload=payload)
 		elif specific_topic == 'stopListening':
-			rospy.logdebug('++++++++++handle_asr-stopListening: '+str(specific_topic) +': payload %s', str(payload))
+			rospy.logdebug('handle_asr-stopListening: '+str(specific_topic) +': payload %s', str(payload))
 		elif specific_topic == 'textCaptured':
-			rospy.logdebug('**********handle_asr-textCaptured: '+str(specific_topic) +': payload %s', str(payload))
+			rospy.logdebug('handle_asr-textCaptured: '+str(specific_topic) +': payload %s', str(payload))
 			self._session.text_captured(specific_topic=specific_topic, payload=payload)
 		else:
 			pass
@@ -727,8 +743,7 @@ class DialogueManager(ManagerInterface):
 			# update SM
 			self._session.tts_say(specific_topic=specific_topic, payload=payload)
 		elif specific_topic == 'sayFinished':
-			# update SM
-			self._session.tts_finished(specific_topic=specific_topic, payload=payload)
+			
 			# publish a ROS topic
 			context_id = self._session.check_and_return_session_ID(payload['sessionId'], payload['siteId'])
 			assert context_id is not None, "Context ID cannot be empty here!"
@@ -736,6 +751,13 @@ class DialogueManager(ManagerInterface):
 			msg = TtsSessionEnded(context_id=context_id, text_uttered=text_uttered)
 			rospy.logdebug("publishing ROS message pub_tts_finished: {} ".format(msg))
 			self.pub_tts_finished.publish(msg)
+			
+			# update SM, after send the message!
+			self._session.tts_finished(specific_topic=specific_topic, payload=payload)
 		else:
 			pass
-		
+
+
+def _format_state_log(msg, enter=True):
+	prefix = "--->>>ENTER" if enter else "<<<---EXIT"
+	return prefix + " --- " + msg

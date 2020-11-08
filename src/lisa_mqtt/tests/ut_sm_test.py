@@ -14,12 +14,12 @@ TestData = namedtuple('TestData', ['transition', 'next_state', 'msg', 'non_possi
 # --------------------- 
 
 # Here are described which transitions are NON possible from a specific state. Calling a transition in that state would cause an error
-#ALL STATES				= 	    ['wake_up', 'external_request', 'session_started', 'asr_started', 'text_captured','intent_recognized','intent_not_recognized','rh_session_reset' ]
-FROM_INIT_NON_POSSIBLE =	 	[          						'session_started', 'asr_started', 'text_captured', 'intent_recognized', 'intent_not_recognized','rh_session_reset' ]
-FROM_WAIT_RH_NON_POSSIBLE  =	[          						   				   'asr_started', 'text_captured', 'intent_recognized', 'intent_not_recognized' ]
-FROM_SESS_ACT_NON_POSSIBLE =	[          						'session_started', 				  'text_captured', 'intent_recognized', 'intent_not_recognized' ]
-FROM_WAIT_SPCH_NON_POSSIBLE	=	[          						'session_started', 'asr_started',                  'intent_recognized', 'intent_not_recognized' ]
-FROM_WAIT_INTENT_NON_POSSIBLE = [          						'session_started', 'asr_started', 'text_captured',]
+#ALL STATES				= 	    ['wake_up', 'external_request', 'session_started', 'asr_started', 'text_captured','intent_recognized','intent_not_recognized','rh_session_reset', 'tts_say', 'tts_finished' ]
+FROM_INIT_NON_POSSIBLE =	 	[          						'session_started', 'asr_started', 'text_captured', 'intent_recognized', 'intent_not_recognized',				 'tts_say', 'tts_finished']
+FROM_WAIT_RH_NON_POSSIBLE  =	[          						   				   'asr_started', 'text_captured', 'intent_recognized', 'intent_not_recognized',				 			'tts_finished']
+FROM_SESS_ACT_NON_POSSIBLE =	[          						'session_started', 				  'text_captured', 'intent_recognized', 'intent_not_recognized',				            'tts_finished' ]
+FROM_WAIT_SPCH_NON_POSSIBLE	=	[          						'session_started', 'asr_started',                  'intent_recognized', 'intent_not_recognized',				  'tts_say', 'tts_finished']           
+FROM_WAIT_INTENT_NON_POSSIBLE = [          						'session_started', 'asr_started', 'text_captured',												   				 'tts_say', 'tts_finished']
 FROM_WAIT_SAY_NON_POSSIBLE    =	[								'session_started', 'asr_started', 'text_captured','intent_recognized','intent_not_recognized', ]
 
 
@@ -103,8 +103,8 @@ test_sequence_mix_session_data = [
 ## DEFINITION FOR TestLisaStateMachineExternalRequest ##
 ########################################################
 # Example of messages from a real session
-EXTERNAL_MSG_NO_SESSION_2A = {'externalSessionID': None, 'siteId': 'default'}
-EXTERNAL_MSG_WITH_SESSION_2B = {'externalSessionID': 'SomeExternalSession_BLABLA', 'siteId': 'default'}
+EXTERNAL_MSG_NO_SESSION_2A = {'externalSessionID': None, 'siteId': 'default', 'type': 'action'}
+EXTERNAL_MSG_WITH_SESSION_2B = {'externalSessionID': 'SomeExternalSession_BLABLA', 'siteId': 'default', 'type': 'action'}
 SAY_MSG_2 = {'text': 'Ask me about the time',   'siteId': 'default', 'lang': None, 'id': '8cac8399-5ac6-4037-90f2-7149251cd575', 'sessionId': '0a9d4d16-0808-4db0-80d8-2d11e75f5b40'}
 TTS_SAY_FINISHED_2 = {'siteId': 'default', 'id': '8cac8399-5ac6-4037-90f2-7149251cd575', 'sessionId': '0a9d4d16-0808-4db0-80d8-2d11e75f5b40'}
 SESS_STARTED_MSG_2 = {'sessionId': '0a9d4d16-0808-4db0-80d8-2d11e75f5b40', 'siteId': 'default', 'customData': 'Anonymous_1', 'lang': None}	
@@ -118,8 +118,8 @@ RH_RESET_SESS_RECOGN_MSG_2 = {'termination': {'reason': 'nominal'}, 'sessionId':
 RH_RESET_SESS_DURING_WAIT_MSG_2 = {'termination': {'reason': 'abortedByUser'}, 'sessionId': '0a9d4d16-0808-4db0-80d8-2d11e75f5b40', 'siteId': 'default', 'customData': 'Anonymous_1'}
 
 # Different session and customData
-EXTERNAL_MSG_NO_SESSION_3A = {'externalSessionID': None, 'siteId': 'default'}
-EXTERNAL_MSG_WITH_SESSION_3B = {'externalSessionID': 'SomeExternalSession_BLABLA', 'siteId': 'default'}
+EXTERNAL_MSG_NO_SESSION_3A = {'externalSessionID': None, 'siteId': 'default', 'type': 'action'}
+EXTERNAL_MSG_WITH_SESSION_3B = {'externalSessionID': 'SomeExternalSession_BLABLA', 'siteId': 'default', 'type': 'action'}
 SAY_MSG_3 = {'text': 'Ask me about the time',   'siteId': 'default', 'lang': None, 'id': '8cac8399-5ac6-4037-90f2-7149251cd575', 'sessionId': '52460f67-4db0-45cd-b619-748cf8453b0d'}
 TTS_SAY_FINISHED_3 = {'siteId': 'default', 'id': '8cac8399-5ac6-4037-90f2-7149251cd575', 'sessionId': '52460f67-4db0-45cd-b619-748cf8453b0d'}
 SESS_STARTED_MSG_3 = {'sessionId': '52460f67-4db0-45cd-b619-748cf8453b0d', 'siteId': 'default', 'customData': 'Some_session', 'lang': None}	
