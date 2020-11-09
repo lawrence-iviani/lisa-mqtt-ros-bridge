@@ -36,7 +36,7 @@ FROM_WAIT_SAY_NON_POSSIBLE    =	[								'session_started', 'asr_started', 'text
 # Example of messages from a real session
 WAKE_UP_MSG_1 = {'modelId': 'snowboy', 'modelVersion': '', 'modelType': 'personal', 'currentSensitivity': 0.8, 'siteId': 'default', 'sessionId': None, 'sendAudioCaptured': None, 'lang': None,} # 'termination': {'reason': 'intentNotRecognized'}}
 SESS_STARTED_MSG_1 = {'sessionId': 'default-snowboy-52460f67-54eb-45cd-b619-748cf8453b0d', 'siteId': 'default', 'customData': 'snowboy', 'lang': None}
-START_LISTENING_MSG_1 = {'siteId': 'default', 'sessionId': 'default-snowboy-52460f67-54eb-45cd-b619-748cf8453b0d', 'lang': None, 'stopOnSilence': True, 'sendAudioCaptured': True, 'wakewordId': 'snowboy', 'intentFilter': None}
+START_LISTENING_MSG_1 = {'siteId': 'default', 'sessionId': 'default-snowboy-52460f67-54eb-45cd-b619-748cf8453b0d', 'lang': None, 'stopOnSilence': True, 'sendAudioCaptured': True, 'wakewordId': 'snowboy', 'intentFilter': ['GetTime']}
 TEXT_CAPTURED_MSG_1 = {'text': 'what time is it', 'likelihood': 1, 'seconds': 1.3038434779991803, 'siteId': 'default', 'sessionId': 'default-snowboy-52460f67-54eb-45cd-b619-748cf8453b0d', 'wakewordId': None, 'asrTokens': None, 'lang': None}
 INTENT_RECOGN_MSG_1 = {'input': 'what time is it', 'intent': {'intentName': 'GetTime', 'confidenceScore': 1.0}, 'siteId': 'default', 'id': None, 'slots': [], 'sessionId': 'default-snowboy-52460f67-54eb-45cd-b619-748cf8453b0d'}
 INTENT_NOT_RECOGN_MSG_1 = {'input': 'set blue', 'siteId': 'default', 'id': None, 'customData': None, 'sessionId': 'default-snowboy-52460f67-54eb-45cd-b619-748cf8453b0d'}
