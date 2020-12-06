@@ -1,6 +1,7 @@
 
 from collections import OrderedDict
 import json
+import subprocess
 from sys import stderr
 
 # State machine pytransitions
@@ -31,6 +32,7 @@ DEFAULT_RH_SITE = 'default' # TODO: should be configurable at startup
 INIT_STATE = 'Init'
 ANONYMOUS_PREFIX = 'Anonymous_'
 WAKEUPWORD_PREFIX = 'Wakeupword_'
+MOSQUITTO_PORT = 12183
 
 
 # MQTT topics to listen
@@ -158,6 +160,7 @@ class SessionInfo:
 	def is_notification_only(self):
 		return self.notification_only
 	
+	
 class DialogueSession:
 	# TODO, add a session storage here??
 
@@ -240,6 +243,7 @@ class DialogueSession:
 		if True: #self.DEBUG_STATES_FUNCTIONS:
 			rospy.logdebug("Calling init_external_session, payload: {}".format(payload))
 			rospy.logdebug('init_external_session.session_ID is: {}, is notification only: {}'.format(session_ID, notifiaction_only))
+				
 		self._session_data.init_session(session_ID, rh_site, notifiaction_only)		
 	
 	def check_hotword(self, **kwargs):
@@ -365,6 +369,14 @@ class DialogueSession:
 				'session_elaspesd': self._session_data.elasped_time,
 				'rh_last_session_elpased': self._session_data.rhasspy_elasped_time }
 	
+	@property
+	def is_active_session_notification_only(self):
+		if not self.has_active_rhasspy_session():
+			return
+		if self.is_valid_rh_session(self.rhasspy_session_id, self.rhasspy_site_id):
+			return self._session_data.is_notification_only
+		else:
+			return # by purpose i wanna return none. In this case in not specified
 	# ----------------------
 	# ----- Init STATE -----
 	# ----------------------
@@ -629,9 +641,11 @@ class DialogueManager(ManagerInterface):
 		self._session.external_request(payload=pl_ext_req)
 		# update the customData, (e.g. if None the session is assigned during the transition external_request )
 		customData = _custom_data(customData)
+		
 		# sending the start via Hermes protocol
 		_send_start_session(customData, canBeEnqueued, text, intent_filter)
 		rospy.sleep(_sleep_time) # wait the message is delivered and executed. Emipirival value
+		
 		return True
 			
 	# -------------------------------------------
@@ -775,8 +789,8 @@ class DialogueManager(ManagerInterface):
 			pass #rospy.logwarn('handle_nlu not managed {}-{}'.format(specific_topic, payload))
 
 	def handle_error(self, specific_topic, client, userdata, message):
-		rospy.logerr('handle_error:'+str(specific_topic))
-		print('handle_error->',specific_topic)
+		rospy.logerr('handle_error: '+str(specific_topic) + " - message"+str(message))
+		#print('handle_error->',specific_topic)
 
 	def handle_tts(self, specific_topic, client, userdata, message):
 		payload = json.loads(message.payload)
@@ -792,11 +806,28 @@ class DialogueManager(ManagerInterface):
 			msg = TtsSessionEnded(context_id=context_id, text_uttered=text_uttered)
 			rospy.logdebug("publishing ROS message pub_tts_finished: {} ".format(msg))
 			self.pub_tts_finished.publish(msg)
-			
-			# update SM, after send the message!
+			# play a beep, TODO: only if the session is external!!
+			if not self._session.is_active_session_notification_only:
+				self.play_beep(payload['sessionId'], payload['siteId']) # TODO Add file to play!
+		        # update SM, after send the message!
+			rospy.sleep(1)
 			self._session.tts_finished(specific_topic=specific_topic, payload=payload)
 		else:
 			pass
+
+	def play_beep(self, requestId, siteId, wav_file = "/home/pi/sw/rhasspy/etc/wav/beep_hi.wav"):
+			# ----------------- play a beep here
+
+		try:
+			topic="hermes/audioServer/{}/playBytes/{}".format(siteId, requestId)
+			print( self._mqtt_client.__dict__)
+			port = str(self._mqtt_client._port)
+			cmd = ["mosquitto_pub", "-h", "localhost",  "-p", port, "-t", topic, "-f", wav_file]
+            
+			p = subprocess.run(cmd) # this stay until the process is finished, subprocess.Popen(cmd)  return immediately
+			
+		except Exception as e:
+			rospy.logwarn("Got an excpetion beeping, skipping! " + str(e))
 
 
 def _format_state_log(msg, enter=True):
