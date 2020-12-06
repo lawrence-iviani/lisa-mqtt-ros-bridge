@@ -15,7 +15,7 @@ import actionlib
 # from lisa_interaction_msgs.srv import IntentService
 from lisa_interaction_msgs.srv import UtterService, UtterServiceResponse 
 from lisa_interaction_msgs.srv import InteractService, InteractServiceResponse
-from lisa_interaction_msgs.msg import IntentMessage, IntentNotRecognizedMessage, TtsSessionEnded
+from lisa_interaction_msgs.msg import IntentMessage, IntentNotRecognizedMessage, TtsSessionEnded, WakedUpMessage, TextCapturedMessage
 # TTS actionlib messages
 from lisa_interaction_msgs.msg import LisaUtterAction, LisaUtterFeedback, LisaUtterResult
 
@@ -481,7 +481,9 @@ class DialogueManager(ManagerInterface):
 		self.pub_intent = rospy.Publisher(ROS_SERVICE_PREFIX + 'intent', IntentMessage, queue_size=10)
 		self.pub_intent_not_rec = rospy.Publisher(ROS_SERVICE_PREFIX + 'intent/not_recognized', IntentNotRecognizedMessage, queue_size=10)
 		self.pub_tts_finished = rospy.Publisher(ROS_SERVICE_PREFIX + 'tts/finished', TtsSessionEnded, queue_size=10)
-
+		self.pub_wakeup_detected = rospy.Publisher(ROS_SERVICE_PREFIX + 'waked_up', WakedUpMessage, queue_size=10)
+		self.pub_text_captured = rospy.Publisher(ROS_SERVICE_PREFIX + 'text_captured', TextCapturedMessage, queue_size=10)
+		
 		# start utter service listening on ROS and using MQTT client to call services
 		self.action_utter = actionlib.SimpleActionServer('/lisa/say', LisaUtterAction, self.execute_utter_actionlib_callback, False)
 		self.action_utter.start()
@@ -635,6 +637,30 @@ class DialogueManager(ManagerInterface):
 	# -------------------------------------------
 	# -------------- MQTT HANDLERS --------------
 	# -------------------------------------------
+		
+	def handle_hotword(self, specific_topic, client, userdata, message):
+		payload = json.loads(message.payload)
+		# hermes message
+		# Key 					Type 	Description
+		# siteId 				String 	The id of the site where the wake word detector should be turned on
+		# modelId 				String 	The id of the model that triggered the wake word
+		# modelVersion			String 	The version of the model
+		# modelType 			String 	The type of the model. Possible values: universal or personal
+		# currentSensitivity 	Float 	The sensitivity configured in the model at the time of the detection
+		if specific_topic == 'toggleOn':
+			pass
+		elif specific_topic == 'toggleOff':
+			pass
+		elif specific_topic == HOTWORD + '/detected':
+			self._session.wake_up(specific_topic=specific_topic, payload=payload)
+			
+			# The ros message is published mostly for testing and profiling
+			msg = WakedUpMessage(site_id=payload["siteId"], wakeup_word=HOTWORD)
+			rospy.logdebug("publishing message: {}".format(msg))
+			self.pub_wakeup_detected.publish(msg)
+		else:
+			rospy.logwarn('handle_hotword->{} +++UNHANDLED+++'.format(specific_topic))
+	
 	def handle_intents(self, specific_topic, client, userdata, message):
 
 		# decode the message
@@ -693,22 +719,11 @@ class DialogueManager(ManagerInterface):
 				rospy.logerr('+-+-+-+-+-+-EXCEPTION:'+str(specific_topic)+':  %s', str(e))
 				raise e
 		elif specific_topic == 'startSession':
-			rospy.loginfo('handle_dialogue: startSession {}-{}'.format(specific_topic, payload))
+			rospy.logdebug('handle_dialogue: startSession {}-{}'.format(specific_topic, payload))
 		elif specific_topic == 'continueSession':
-			rospy.loginfo('handle_dialogue: continueSession {}-{}'.format(specific_topic, payload))
+			rospy.logdebug('handle_dialogue: continueSession {}-{}'.format(specific_topic, payload))
 		else:
 			rospy.logwarn('handle_dialogue, topic->' + str(specific_topic) + ' ignored')
-
-	def handle_hotword(self, specific_topic, client, userdata, message):
-		payload = json.loads(message.payload)
-		if specific_topic == 'toggleOn':
-			pass
-		elif specific_topic == 'toggleOff':
-			pass
-		elif specific_topic == HOTWORD + '/detected':
-			self._session.wake_up(specific_topic=specific_topic, payload=payload)
-		else:
-			rospy.logwarn('handle_hotword->{} +++UNHANDLED+++'.format(specific_topic))
 
 	def handle_asr(self, specific_topic, client, userdata, message):
 		payload = json.loads(message.payload)
@@ -719,7 +734,16 @@ class DialogueManager(ManagerInterface):
 			rospy.logdebug('handle_asr-stopListening: '+str(specific_topic) +': payload %s', str(payload))
 		elif specific_topic == 'textCaptured':
 			rospy.logdebug('handle_asr-textCaptured: '+str(specific_topic) +': payload %s', str(payload))
+			# update SM
 			self._session.text_captured(specific_topic=specific_topic, payload=payload)
+			# publish ROS topic
+			site_id = payload["siteId"]
+			rh_session_id = payload["sessionId"]
+			assert self._session.is_valid_rh_session(rh_session_id,site_id), "Mismatched rh session"
+			context_id = self._session.check_and_return_session_ID(rh_session_id, site_id) # to check if is fine
+			msg = TextCapturedMessage(context_id=context_id, text=payload["text"], length_seconds=payload["seconds"], likelihood=payload["likelihood"])
+			rospy.logdebug("publishing message: {} ".format(msg))
+			self.pub_text_captured.publish(msg)
 		else:
 			pass
 
@@ -756,13 +780,11 @@ class DialogueManager(ManagerInterface):
 
 	def handle_tts(self, specific_topic, client, userdata, message):
 		payload = json.loads(message.payload)
-		rospy.logdebug("handle_tts {} - payload={} ".format(specific_topic, payload))
-		
+		rospy.logdebug("handle_tts {} - payload={} ".format(specific_topic, payload))	
 		if specific_topic == 'say':
 			# update SM
 			self._session.tts_say(specific_topic=specific_topic, payload=payload)
 		elif specific_topic == 'sayFinished':
-			
 			# publish a ROS topic
 			context_id = self._session.check_and_return_session_ID(payload['sessionId'], payload['siteId'])
 			assert context_id is not None, "Context ID cannot be empty here!"
