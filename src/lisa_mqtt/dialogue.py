@@ -799,6 +799,8 @@ class DialogueManager(ManagerInterface):
 			# update SM
 			self._session.tts_say(specific_topic=specific_topic, payload=payload)
 		elif specific_topic == 'sayFinished':
+			# any better, no the problem seems in the length of the message... not in the activation sequence
+			# self._session.tts_finished(specific_topic=specific_topic, payload=payload)
 			# publish a ROS topic
 			context_id = self._session.check_and_return_session_ID(payload['sessionId'], payload['siteId'])
 			assert context_id is not None, "Context ID cannot be empty here!"
@@ -806,18 +808,20 @@ class DialogueManager(ManagerInterface):
 			msg = TtsSessionEnded(context_id=context_id, text_uttered=text_uttered)
 			rospy.logdebug("publishing ROS message pub_tts_finished: {} ".format(msg))
 			self.pub_tts_finished.publish(msg)
+			# TODO: several testers find it inappropriate
 			# play a beep, TODO: only if the session is external!!
 			if not self._session.is_active_session_notification_only:
 				self.play_beep(payload['sessionId'], payload['siteId']) # TODO Add file to play!
-		        # update SM, after send the message!
-			rospy.sleep(1)
+			# update SM, after send the message!
+			#rospy.sleep(1)
+
+			# Seems bad
 			self._session.tts_finished(specific_topic=specific_topic, payload=payload)
 		else:
 			pass
 
 	def play_beep(self, requestId, siteId, wav_file = "/home/pi/sw/rhasspy/etc/wav/beep_hi.wav"):
 			# ----------------- play a beep here
-
 		try:
 			topic="hermes/audioServer/{}/playBytes/{}".format(siteId, requestId)
 			print( self._mqtt_client.__dict__)
